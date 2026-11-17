@@ -76,7 +76,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-st.write("Google Geminiを用いてPDFの誤字・脱字・表記ゆれを校正するツールです。月ごとにUPしたファイルサイズの総量で課金されるため、サイズを軽くしてUPしてください。")
+st.write("PDFの誤字・脱字・表記ゆれを校正するツールです。")
 
 # ハイライト＆完了バナー用のデザイン（CSS）
 st.markdown(
