@@ -1,8 +1,11 @@
 import streamlit as st
 from google import genai
 from google.genai import types
+from fpdf import FPDF
 import tempfile
 import os
+import re
+import urllib.request
 
 # ブラウザのタブ設定
 st.set_page_config(
@@ -30,6 +33,33 @@ def check_password():
 check_password()
 # ---------------------------------
 
+# 日本語PDF生成用の関数（IPAexゴシックフォントを自動取得して文字化けを防止）
+def create_result_pdf(result_text: str, original_filename: str) -> bytes:
+    font_path = "/tmp/ipaexg.ttf"
+    if not os.path.exists(font_path):
+        url = "https://githubusercontent.com"
+        urllib.request.urlretrieve(url, font_path)
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font("JPFont", style="", fname=font_path)
+    pdf.set_font("JPFont", size=11)
+
+    # タイトルヘッダー
+    pdf.set_font_size(15)
+    pdf.cell(0, 10, txt=f"【AI校正レポート】 {original_filename}", ln=True)
+    pdf.ln(5)
+
+    # HTMLタグ（<div...>や<del>など）をPDF用の見やすい記号に変換
+    clean_text = re.sub(r'<div class="issue-header">(.*?)</div>', r'\n========================================\n\1\n========================================', result_text)
+    clean_text = re.sub(r'<del class="diff-del">(.*?)</del>', r'【誤:\1】', clean_text)
+    clean_text = re.sub(r'<u class="diff-add">(.*?)</u>', r'【正:\1】', clean_text)
+    clean_text = re.sub(r'<[^>]+>', '', clean_text)  # その他のHTMLタグを除去
+
+    pdf.set_font_size(10)
+    pdf.multi_cell(0, 7, txt=clean_text)
+    return bytes(pdf.output())
+
 # タイトルと赤い「PDF」SVGアイコンの表示
 st.markdown(
     """
@@ -46,7 +76,7 @@ st.markdown(
 )
 st.write("Google Geminiを用いてPDFの誤字・脱字・表記ゆれを校正するツールです。")
 
-# ハイライト用のデザイン（CSS）
+# ハイライト＆完了バナー用のデザイン（CSS）
 st.markdown(
     """
     <style>
@@ -78,12 +108,25 @@ st.markdown(
         padding: 1px 4px;
         border-radius: 3px;
     }
+    /* 目立つ完了バナーのデザイン */
+    .complete-banner {
+        background: linear-gradient(135deg, #2E7D32 0%, #43A047 100%);
+        color: white;
+        padding: 18px 24px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.25em;
+        font-weight: bold;
+        margin-top: 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 10px rgba(46, 125, 50, 0.25);
+        letter-spacing: 0.05em;
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# クラウドの安全な金庫（Secrets）からAPIキーを読み込む
 client = genai.Client(
     api_key=st.secrets["GEMINI_API_KEY"],
     http_options=types.HttpOptions(timeout=600000)
@@ -98,7 +141,6 @@ if uploaded_file is not None:
         tmp_file_path = None
         pdf_file = None
         
-        # 1. 進行状況バー（ここは処理中の案内だけを表示）
         status = st.status("AIがPDFを解析中...", expanded=True)
         
         try:
@@ -145,7 +187,6 @@ if uploaded_file is not None:
                 )
             )
             
-            # 2. 校正結果の表示エリア（statusボックスの外側に出すので絶対に閉じない）
             st.markdown("---")
             st.subheader("📝 校正結果")
             
@@ -157,12 +198,26 @@ if uploaded_file is not None:
                     full_response += chunk.text
                     result_placeholder.markdown(full_response + "▌", unsafe_allow_html=True)
             
-            # 確定表示
             result_placeholder.markdown(full_response, unsafe_allow_html=True)
-            
-            # 3. 上部のステータスを完了にしつつ、一番下にも完了メッセージを表示
             status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-            st.success("🎉 すべての校正が完了しました！")
+            
+            # 1. 画面下部に大きく目立つ完了バナーを表示
+            st.markdown(
+                '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
+                unsafe_allow_html=True
+            )
+            
+            # 2. 校正結果のPDFファイルを生成してダウンロードボタンを設置
+            pdf_bytes = create_result_pdf(full_response, uploaded_file.name)
+            base_name = os.path.splitext(uploaded_file.name)[0]
+            
+            st.download_button(
+                label="📥 校正結果をPDFファイルでダウンロードする",
+                data=pdf_bytes,
+                file_name=f"校正結果_{base_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
             
         except Exception as e:
             status.update(label="❌ 処理が中断されました", state="error", expanded=True)
