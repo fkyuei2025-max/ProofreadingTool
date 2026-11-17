@@ -82,12 +82,11 @@ st.write("Google Geminiを用いてPDFの誤字・脱字・表記ゆれを校正
 st.markdown(
     """
     <div style="background-color: #F8F9FA; border-left: 4px solid #90A4AE; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 0.9em; color: #37474F;">
-        <strong>【ご利用上の注意・ポイント】</strong>
+        <strong>【注意・ポイント】</strong>
         <ul style="margin-top: 6px; margin-bottom: 0; padding-left: 20px;">
             <li>アップロードされたPDFは校正完了後にサーバーから即座に削除されます。</li>
-            <li>本ツールは「誤字脱字・表記ゆれ」の検出に特化しています（文章の言い回し変更は行いません）。</li>
+            <li>できるだけ軽いデータをアップロードしてください。容量による月毎の課金制です（例：議案書100P・10MB程度で約5円）。</li>
             <li>アウトライン化（画像化）されたPDFやInDesign書き出しデータは、文字の誤認識が発生する場合があります。</li>
-            <li>AIの解析結果には誤りが含まれる可能性があるため、最終確認は必ず目視で行ってください。</li>
         </ul>
     </div>
     """,
