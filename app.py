@@ -33,12 +33,14 @@ def check_password():
 check_password()
 # ---------------------------------
 
-# 日本語PDF生成用の関数（IPAexゴシックフォントを自動取得して文字化けを防止）
+# 日本語PDF生成用の関数（サーバー内の標準日本語フォントを使用）
 def create_result_pdf(result_text: str, original_filename: str) -> bytes:
-    font_path = "/tmp/ipaexg.ttf"
+    # packages.txt でインストールされる標準日本語フォントのパスを指定
+    font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    
+    # 万が一パスが異なる場合の予備パス検索
     if not os.path.exists(font_path):
-        url = "https://githubusercontent.com"
-        urllib.request.urlretrieve(url, font_path)
+        font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
 
     pdf = FPDF()
     pdf.add_page()
@@ -50,11 +52,11 @@ def create_result_pdf(result_text: str, original_filename: str) -> bytes:
     pdf.cell(0, 10, txt=f"【AI校正レポート】 {original_filename}", ln=True)
     pdf.ln(5)
 
-    # HTMLタグ（<div...>や<del>など）をPDF用の見やすい記号に変換
+    # HTMLタグをPDF用の見やすい記号に変換
     clean_text = re.sub(r'<div class="issue-header">(.*?)</div>', r'\n========================================\n\1\n========================================', result_text)
     clean_text = re.sub(r'<del class="diff-del">(.*?)</del>', r'【誤:\1】', clean_text)
     clean_text = re.sub(r'<u class="diff-add">(.*?)</u>', r'【正:\1】', clean_text)
-    clean_text = re.sub(r'<[^>]+>', '', clean_text)  # その他のHTMLタグを除去
+    clean_text = re.sub(r'<[^>]+>', '', clean_text)
 
     pdf.set_font_size(10)
     pdf.multi_cell(0, 7, txt=clean_text)
