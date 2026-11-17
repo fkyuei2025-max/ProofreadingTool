@@ -17,7 +17,7 @@ def check_password():
         st.session_state["password_correct"] = False
 
     if not st.session_state["password_correct"]:
-        st.title("🔒 社内専用 AI PDF校正ツール")
+        st.title("🔒 PDF AI校正ツール")
         pwd = st.text_input("利用パスワードを入力してください", type="password")
         if st.button("ログイン"):
             if pwd == st.secrets["APP_PASSWORD"]:
@@ -44,7 +44,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-st.write("Google Geminiを用いてPDFの誤字・脱字・表記ゆれを校正するツール")
+st.write("Google Geminiを用いてPDFの誤字・脱字・表記ゆれを校正するツールです。")
 
 # ハイライト用のデザイン（CSS）
 st.markdown(
@@ -95,76 +95,84 @@ if uploaded_file is not None:
     st.success(f"ファイル「{uploaded_file.name}」を読み込みました。")
     
     if st.button("校正を実行する", type="primary"):
-        with st.status("AIがPDFを解析中...", expanded=True) as status:
-            tmp_file_path = None
-            pdf_file = None
-            try:
-                status.write("⏳ PDFをGoogleの専用解析サーバーへ転送中...")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_file_path = tmp_file.name
+        tmp_file_path = None
+        pdf_file = None
+        
+        # 1. 進行状況バー（ここは処理中の案内だけを表示）
+        status = st.status("AIがPDFを解析中...", expanded=True)
+        
+        try:
+            status.write("⏳ PDFをGoogleの専用解析サーバーへ転送中...")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
 
-                pdf_file = client.files.upload(file=tmp_file_path)
-                
-                status.write("🚀 解析を開始しました。結果が見つかり次第、下にリアルタイムで表示されます...")
-                
-                prompt = """
-                添付されたPDFファイルをすべて確認し、文章の「誤字脱字」および「表記ゆれ」の検出に特化した厳密な校正を行ってください。
+            pdf_file = client.files.upload(file=tmp_file_path)
+            
+            status.write("🚀 解析を開始しました。下にリアルタイムで結果が表示されます...")
+            
+            prompt = """
+            添付されたPDFファイルをすべて確認し、文章の「誤字脱字」および「表記ゆれ」の検出に特化した厳密な校正を行ってください。
 
-                【重要：校正のルール】
-                - 文章の言い回しや表現の推敲、リライト提案は**一切不要**です。
-                - 著者の文体や表現は尊重し、客観的なミスと不統一のみを抽出してください。
-                - PDFの仕様上、二重かぎ括弧『』や一重かぎ括弧「」が読み取り時に崩れることがあるため、括弧単体の文字化けやペアのズレは指摘から除外してください。
-                - 指摘すべき箇所が全くない場合は「誤字脱字・表記ゆれは見つかりませんでした」とだけ回答してください。
+            【重要：校正のルール】
+            - 文章の言い回しや表現の推敲、リライト提案は**一切不要**です。
+            - 著者の文体や表現は尊重し、客観的なミスと不統一のみを抽出してください。
+            - PDFの仕様上、二重かぎ括弧『』や一重かぎ括弧「」が読み取り時に崩れることがあるため、括弧単体の文字化けやペアのズレは指摘から除外してください。
+            - 指摘すべき箇所が全くない場合は「誤字脱字・表記ゆれは見つかりませんでした」とだけ回答してください。
 
-                【重点チェック項目】
-                1. 誤字・脱字（漢字の変換ミス、文字の抜け、重複した助詞など）
-                2. 送り仮名の誤り
-                3. 表記ゆれ（カタカナ語の長音有無、漢字とひらがなの混在、半角・全角の混在、固有名詞の不統一）
+            【重点チェック項目】
+            1. 誤字・脱字（漢字の変換ミス、文字の抜け、重複した助詞など）
+            2. 送り仮名の誤り
+            3. 表記ゆれ（カタカナ語の長音有無、漢字とひらがなの混在、半角・全角の混在、固有名詞の不統一）
 
-                【出力フォーマット・強調ルール】
-                修正が必要な箇所のみ、以下の形式で出力してください。
-                その際、元の文の間違っている文字は必ず <del class="diff-del">該当文字</del> で囲み、
-                修正案の直した文字は必ず <u class="diff-add">修正文字</u> で囲んでください。
+            【出力フォーマット・強調ルール】
+            修正が必要な箇所のみ、以下の形式で出力してください。
+            その際、元の文の間違っている文字は必ず <del class="diff-del">該当文字</del> で囲み、
+            修正案の直した文字は必ず <u class="diff-add">修正文字</u> で囲んでください。
 
-                <div class="issue-header">📍 指摘箇所 [ページ数]</div>
-                - 種別：（誤字 / 脱字 / 送り仮名 / 表記ゆれ のいずれか）
-                - 元の文：「ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む」
-                - 修正案：「ここに修正文を記載し、直した部分だけ <u class="diff-add">正字</u> で囲む」
-                - 理由：（どの文字が誤っているか、または何ページ目の表記と統一すべきか）
-                """
-                
-                response_stream = client.models.generate_content_stream(
-                    model='gemini-3.8-flash',
-                    contents=[pdf_file, prompt],
-                    config=types.GenerateContentConfig(
-                        thinking_config=types.ThinkingConfig(thinking_budget=0)
-                    )
+            <div class="issue-header">📍 指摘箇所 [ページ数]</div>
+            - 種別：（誤字 / 脱字 / 送り仮名 / 表記ゆれ のいずれか）
+            - 元の文：「ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む」
+            - 修正案：「ここに修正文を記載し、直した部分だけ <u class="diff-add">正字</u> で囲む」
+            - 理由：（どの文字が誤っているか、または何ページ目の表記と統一すべきか）
+            """
+            
+            response_stream = client.models.generate_content_stream(
+                model='gemini-3.8-flash',
+                contents=[pdf_file, prompt],
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=0)
                 )
-                
-                st.markdown("---")
-                st.subheader("📝 校正結果（リアルタイム出力）")
-                
-                result_placeholder = st.empty()
-                full_response = ""
-                
-                for chunk in response_stream:
-                    if chunk.text:
-                        full_response += chunk.text
-                        result_placeholder.markdown(full_response + "▌", unsafe_allow_html=True)
-                
-                result_placeholder.markdown(full_response, unsafe_allow_html=True)
-                status.update(label="✅ すべての校正が完了しました！", state="complete")
-                
-            except Exception as e:
-                status.update(label="❌ 処理が中断されました", state="error")
-                st.error(f"【エラー詳細】\n\n{e}")
-                
-            finally:
-                if pdf_file:
-                    try:
-                        client.files.delete(name=pdf_file.name)
-                    except Exception:
-                        pass
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    os.unlink(tmp_file_path)
+            )
+            
+            # 2. 校正結果の表示エリア（statusボックスの外側に出すので絶対に閉じない）
+            st.markdown("---")
+            st.subheader("📝 校正結果")
+            
+            result_placeholder = st.empty()
+            full_response = ""
+            
+            for chunk in response_stream:
+                if chunk.text:
+                    full_response += chunk.text
+                    result_placeholder.markdown(full_response + "▌", unsafe_allow_html=True)
+            
+            # 確定表示
+            result_placeholder.markdown(full_response, unsafe_allow_html=True)
+            
+            # 3. 上部のステータスを完了にしつつ、一番下にも完了メッセージを表示
+            status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
+            st.success("🎉 すべての校正が完了しました！")
+            
+        except Exception as e:
+            status.update(label="❌ 処理が中断されました", state="error", expanded=True)
+            st.error(f"【エラー詳細】\n\n{e}")
+            
+        finally:
+            if pdf_file:
+                try:
+                    client.files.delete(name=pdf_file.name)
+                except Exception:
+                    pass
+            if tmp_file_path and os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
