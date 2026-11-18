@@ -280,7 +280,7 @@ if uploaded_file is not None:
             result_placeholder = st.empty()
             full_response = ""
             
-             for chunk in response_stream:
+            for chunk in response_stream:
                 if chunk.text:
                     full_response += chunk.text
                     clean_stream = full_response.replace("```html", "").replace("```", "")
