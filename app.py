@@ -353,7 +353,7 @@ if uploaded_file is not None:
             # --- ここから「問題なしカード」の自動色変え処理 ---
             # 1枚ずつカードに分割して中身をチェック（カードは絶対に削除しない）
             parts = final_clean_response.split('<div class="issue-card">')
-            converted_parts = [parts]
+            converted_parts = [parts[0]]
             
             for part in parts[1:]:
                 # 「合致しています」「一致しています」「問題ありません」等の確認文が含まれる場合、青グレーカード(ok-card)に置換
