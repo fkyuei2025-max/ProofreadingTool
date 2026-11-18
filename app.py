@@ -4,7 +4,9 @@ from google.genai import types
 from weasyprint import HTML
 import tempfile
 import os
+import re  # ← この1行を追加してください！
 from datetime import datetime
+
 
 # ブラウザのタブ設定
 st.set_page_config(
