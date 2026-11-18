@@ -33,7 +33,7 @@ def check_password():
 check_password()
 # ---------------------------------
 
-# 日本語PDF生成用の関数（新しい上下比較レイアウトにも対応）
+# 日本語PDF生成用の関数
 def create_result_pdf(result_text: str, original_filename: str) -> bytes:
     font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
     if not os.path.exists(font_path):
@@ -44,12 +44,10 @@ def create_result_pdf(result_text: str, original_filename: str) -> bytes:
     pdf.add_font("JPFont", style="", fname=font_path)
     pdf.set_font("JPFont", size=11)
 
-    # タイトルヘッダー
     pdf.set_font_size(15)
     pdf.cell(0, 10, txt=f"【AI校正レポート】 {original_filename}", ln=True)
     pdf.ln(5)
 
-    # HTMLタグをPDF用の見やすいテキスト構造に変換
     clean_text = re.sub(r'<div class="issue-header">(.*?)</div>', r'\n========================================\n\1\n========================================', result_text)
     clean_text = re.sub(r'<span class="label-before">.*?</span>', '【元の文】 ', clean_text)
     clean_text = re.sub(r'<span class="label-after">.*?</span>', '【修正案】 ', clean_text)
@@ -99,7 +97,6 @@ st.markdown(
 st.markdown(
     """
     <style>
-    /* 指摘箇所全体のカード枠 */
     .issue-card {
         border: 1px solid #E0E0E0;
         border-radius: 8px;
@@ -109,7 +106,6 @@ st.markdown(
         box-shadow: 0 2px 5px rgba(0,0,0,0.04);
         overflow: hidden;
     }
-    /* 見出しバー */
     .issue-header {
         font-size: 1.1em;
         font-weight: bold;
@@ -119,21 +115,18 @@ st.markdown(
         padding: 8px 14px;
         border-bottom: 1px solid #E0E0E0;
     }
-    /* 上段：元の文のボックス */
     .box-before {
         background-color: #FFF8F8;
         padding: 10px 14px;
         border-bottom: 1px dashed #FFCDD2;
         line-height: 1.6;
     }
-    /* 下段：修正案のボックス */
     .box-after {
         background-color: #F4FBF7;
         padding: 10px 14px;
         border-bottom: 1px solid #E0E0E0;
         line-height: 1.6;
     }
-    /* ラベルバッジ（元の文 / 修正案） */
     .label-before {
         display: inline-block;
         background-color: #E53935;
@@ -156,7 +149,6 @@ st.markdown(
         margin-right: 8px;
         vertical-align: middle;
     }
-    /* 元の文の誤り箇所：赤文字＋太字＋打ち消し線 */
     del.diff-del {
         color: #D32F2F;
         background-color: #FFCDD2;
@@ -165,7 +157,6 @@ st.markdown(
         padding: 1px 4px;
         border-radius: 3px;
     }
-    /* 修正案の変更箇所：緑・青系の強調＋太字＋下線 */
     u.diff-add {
         color: #1B5E20;
         background-color: #C8E6C9;
@@ -175,7 +166,6 @@ st.markdown(
         padding: 1px 4px;
         border-radius: 3px;
     }
-    /* 下部：補足情報（種別・理由）のまとめエリア */
     .issue-meta {
         background-color: #FAFAFA;
         padding: 10px 14px;
@@ -183,7 +173,6 @@ st.markdown(
         color: #424242;
         line-height: 1.5;
     }
-    /* 目立つ完了バナーのデザイン */
     .complete-banner {
         background: linear-gradient(135deg, #2E7D32 0%, #43A047 100%);
         color: white;
@@ -228,7 +217,6 @@ if uploaded_file is not None:
             
             status.write("🚀 解析を開始しました。下にリアルタイムで結果が表示されます...")
             
-            # 現在の年（2026年など）を自動取得してプロンプトに反映
             current_year = datetime.now().year
             
             prompt = f"""
@@ -280,28 +268,28 @@ if uploaded_file is not None:
             for chunk in response_stream:
                 if chunk.text:
                     full_response += chunk.text
-                    # AIが万が一 ```html を出力した場合に備えてリアルタイムに除去
                     clean_stream = full_response.replace("```html", "").replace("```", "")
                     result_placeholder.markdown(clean_stream + "▌", unsafe_allow_html=True)
             
             final_clean_response = full_response.replace("```html", "").replace("```", "")
             result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
             status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-# 1. 画面下部に大きく目立つ完了バナーを表示
-st.markdown(
-'🎉 すべての校正が完了しました！',
-unsafe_allow_html=True
-)
-# 2. 校正結果のPDFファイルを生成してダウンロードボタンを設置
-pdf_bytes = create_result_pdf(final_clean_response, uploaded_file.name)
-base_name = os.path.splitext(uploaded_file.name)[0]
-st.download_button(
-label="📥 校正結果をPDFファイルでダウンロードする",
-data=pdf_bytes,
-file_name=f"校正結果_{base_name}.pdf",
-mime="application/pdf",
-use_container_width=True
-)
+            
+            st.markdown(
+                '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
+                unsafe_allow_html=True
+            )
+            
+            pdf_bytes = create_result_pdf(final_clean_response, uploaded_file.name)
+            base_name = os.path.splitext(uploaded_file.name)[0]
+            
+            st.download_button(
+            label="📥 校正結果をPDFファイルでダウンロードする",
+            data=pdf_bytes,
+            file_name=f"校正結果_{base_name}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+            )
 except Exception as e:
 status.update(label="❌ 処理が中断されました", state="error", expanded=True)
 st.error(f"【エラー詳細】\n\n{e}")
