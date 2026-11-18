@@ -349,10 +349,36 @@ if uploaded_file is not None:
             indices = [i for i in [first_issue, first_ok] if i != -1]
             if indices:
                 final_clean_response = final_clean_response[min(indices):]
+            
+            # --- ここから「問題なしカード」の自動色変え処理 ---
+            # 1枚ずつカードに分割して中身をチェック（カードは絶対に削除しない）
+            parts = final_clean_response.split('<div class="issue-card">')
+            converted_parts = [parts]
+            
+            for part in parts[1:]:
+                # 「合致しています」「一致しています」「問題ありません」等の確認文が含まれる場合、青グレーカード(ok-card)に置換
+                is_ok_card = any(w in part for w in ["合致しています", "一致しています", "一致している", "問題ありません", "問題ない", "正しいため"])
+                
+                # または <del class="diff-del">（削除箇所）と <u class="diff-add">（修正箇所）が1つも含まれていない場合も問題なしと判定
+                has_diff = ('<del class="diff-del">' in part) or ('<u class="diff-add">' in part)
+                
+                if is_ok_card or not has_diff:
+                    part = part.replace('class="issue-header"', 'class="ok-header"')
+                    part = part.replace('■ 指摘箇所', '■ 確認済み（問題なし）')
+                    part = part.replace('class="box-before"', 'class="ok-body"')
+                    part = part.replace('class="label-before">元の文', 'class="label-ok">確認文')
+                    # 元の文と修正案が同じ場合は、重複する「修正案」の行を隠してスッキリさせる
+                    part = re.sub(r'<div class="box-after">.*?</div>', '', part, flags=re.DOTALL)
+                    converted_parts.append('<div class="ok-card">' + part)
+                else:
+                    converted_parts.append('<div class="issue-card">' + part)
+                    
+            final_clean_response = "".join(converted_parts)
+            # ----------------------------------------------------
                 
             result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
             status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-            
+          
             st.markdown(
                 '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
                 unsafe_allow_html=True
