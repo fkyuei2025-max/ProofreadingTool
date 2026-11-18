@@ -4,7 +4,9 @@ from google.genai import types
 from weasyprint import HTML
 import tempfile
 import os
+import re
 from datetime import datetime
+
 
 # ブラウザのタブ設定
 st.set_page_config(
@@ -278,16 +280,47 @@ if uploaded_file is not None:
             result_placeholder = st.empty()
             full_response = ""
             
-            for chunk in response_stream:
+             for chunk in response_stream:
                 if chunk.text:
                     full_response += chunk.text
                     clean_stream = full_response.replace("```html", "").replace("```", "")
+                    if '<div class="issue-card">' in clean_stream:
+                        clean_stream = clean_stream[clean_stream.find('<div class="issue-card">'):]
                     result_placeholder.markdown(clean_stream + "▌", unsafe_allow_html=True)
             
+            # --- ここから不要カード自動削除フィルター ---
             final_clean_response = full_response.replace("```html", "").replace("```", "")
+            
+            # HTML内の <div class="issue-card">...</div> を1枚ずつ抽出して検査
+            cards = re.findall(r'<div class="issue-card">.*?</div>\s*</div>', final_clean_response, flags=re.DOTALL)
+            valid_cards = []
+            
+            for card in cards:
+                # 理由欄などに「一致している」「指摘不要」「問題ない」が含まれる誤爆カードを除外
+                if any(word in card for word in ["一致している", "一致しています", "指摘不要", "問題ない", "問題ありません", "正しいため"]):
+                    continue
+                
+                # 元の文と修正案のテキスト（タグ除去後）が全く同じカードを除外
+                before_match = re.search(r'<div class="box-before">.*?</span>(.*?)</div>', card, flags=re.DOTALL)
+                after_match = re.search(r'<div class="box-after">.*?</span>(.*?)</div>', card, flags=re.DOTALL)
+                if before_match and after_match:
+                    before_text = re.sub(r'<[^>]+>', '', before_match.group(1)).strip()
+                    after_text = re.sub(r'<[^>]+>', '', after_match.group(1)).strip()
+                    if before_text == after_text:
+                        continue
+                        
+                valid_cards.append(card)
+            
+            # 有効な指摘カードが1枚でも残っていればそれだけを並べる。0枚なら「見つかりませんでした」にする
+            if valid_cards:
+                final_clean_response = "\n".join(valid_cards)
+            else:
+                final_clean_response = "誤字脱字・表記ゆれは見つかりませんでした。"
+            # ------------------------------------------
+            
             result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
             status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-            
+           
             st.markdown(
                 '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
                 unsafe_allow_html=True
