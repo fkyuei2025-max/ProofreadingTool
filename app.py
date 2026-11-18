@@ -5,7 +5,7 @@ from fpdf import FPDF
 import tempfile
 import os
 import re
-import urllib.request
+from datetime import datetime
 
 # ブラウザのタブ設定
 st.set_page_config(
@@ -33,12 +33,9 @@ def check_password():
 check_password()
 # ---------------------------------
 
-# 日本語PDF生成用の関数（サーバー内の標準日本語フォントを使用）
+# 日本語PDF生成用の関数（新しい上下比較レイアウトにも対応）
 def create_result_pdf(result_text: str, original_filename: str) -> bytes:
-    # packages.txt でインストールされる標準日本語フォントのパスを指定
     font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-    
-    # 万が一パスが異なる場合の予備パス検索
     if not os.path.exists(font_path):
         font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
 
@@ -52,10 +49,14 @@ def create_result_pdf(result_text: str, original_filename: str) -> bytes:
     pdf.cell(0, 10, txt=f"【AI校正レポート】 {original_filename}", ln=True)
     pdf.ln(5)
 
-    # HTMLタグをPDF用の見やすい記号に変換
+    # HTMLタグをPDF用の見やすいテキスト構造に変換
     clean_text = re.sub(r'<div class="issue-header">(.*?)</div>', r'\n========================================\n\1\n========================================', result_text)
-    clean_text = re.sub(r'<del class="diff-del">(.*?)</del>', r'【誤:\1】', clean_text)
-    clean_text = re.sub(r'<u class="diff-add">(.*?)</u>', r'【正:\1】', clean_text)
+    clean_text = re.sub(r'<span class="label-before">.*?</span>', '【元の文】 ', clean_text)
+    clean_text = re.sub(r'<span class="label-after">.*?</span>', '【修正案】 ', clean_text)
+    clean_text = re.sub(r'<del class="diff-del">(.*?)</del>', r'《誤:\1》', clean_text)
+    clean_text = re.sub(r'<u class="diff-add">(.*?)</u>', r'《正:\1》', clean_text)
+    clean_text = re.sub(r'<div class="issue-meta">', '\n[補足情報]\n', clean_text)
+    clean_text = re.sub(r'<br\s*/?>', '\n', clean_text)
     clean_text = re.sub(r'<[^>]+>', '', clean_text)
 
     pdf.set_font_size(10)
@@ -88,44 +89,99 @@ st.markdown(
             <li>できるだけ軽いデータをアップロードしてください。（ファイルサイズによってクレジットを消費します。目安：1MB＝0.5円）</li>
             <li>AIのOCR機能を用いた校正のため、校正結果がすべて正しいとは限りません。あくまで誤字・脱字等の確認に利用してください。</li>
         </ul>
-
     </div>
     """,
     unsafe_allow_html=True
 )
 # ---------------------------------
 
-# ハイライト＆完了バナー用のデザイン（CSS）
+# 上下比較カード＆ハイライト用のデザイン（CSS）
 st.markdown(
     """
     <style>
+    /* 指摘箇所全体のカード枠 */
+    .issue-card {
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        margin-top: 22px;
+        margin-bottom: 18px;
+        background-color: #FFFFFF;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
+    /* 見出しバー */
     .issue-header {
-        font-size: 1.15em;
+        font-size: 1.1em;
         font-weight: bold;
         color: #1E1E1E;
-        background-color: #F4F6F8;
+        background-color: #F1F3F5;
         border-left: 5px solid #E53935;
-        padding: 6px 12px;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        border-radius: 0 4px 4px 0;
+        padding: 8px 14px;
+        border-bottom: 1px solid #E0E0E0;
     }
+    /* 上段：元の文のボックス */
+    .box-before {
+        background-color: #FFF8F8;
+        padding: 10px 14px;
+        border-bottom: 1px dashed #FFCDD2;
+        line-height: 1.6;
+    }
+    /* 下段：修正案のボックス */
+    .box-after {
+        background-color: #F4FBF7;
+        padding: 10px 14px;
+        border-bottom: 1px solid #E0E0E0;
+        line-height: 1.6;
+    }
+    /* ラベルバッジ（元の文 / 修正案） */
+    .label-before {
+        display: inline-block;
+        background-color: #E53935;
+        color: white;
+        font-size: 0.78em;
+        font-weight: bold;
+        padding: 2px 7px;
+        border-radius: 4px;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    .label-after {
+        display: inline-block;
+        background-color: #2E7D32;
+        color: white;
+        font-size: 0.78em;
+        font-weight: bold;
+        padding: 2px 7px;
+        border-radius: 4px;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    /* 元の文の誤り箇所：赤文字＋太字＋打ち消し線 */
     del.diff-del {
-        color: #E53935;
-        background-color: #FFEBEE;
+        color: #D32F2F;
+        background-color: #FFCDD2;
         text-decoration: line-through;
         font-weight: bold;
         padding: 1px 4px;
         border-radius: 3px;
     }
+    /* 修正案の変更箇所：緑・青系の強調＋太字＋下線 */
     u.diff-add {
-        color: #D32F2F;
-        background-color: #FFF8E1;
+        color: #1B5E20;
+        background-color: #C8E6C9;
         text-decoration: underline;
         text-decoration-thickness: 2px;
         font-weight: bold;
         padding: 1px 4px;
         border-radius: 3px;
+    }
+    /* 下部：補足情報（種別・理由）のまとめエリア */
+    .issue-meta {
+        background-color: #FAFAFA;
+        padding: 10px 14px;
+        font-size: 0.9em;
+        color: #424242;
+        line-height: 1.5;
     }
     /* 目立つ完了バナーのデザイン */
     .complete-banner {
@@ -172,7 +228,10 @@ if uploaded_file is not None:
             
             status.write("🚀 解析を開始しました。下にリアルタイムで結果が表示されます...")
             
-            prompt = """
+            # 現在の年（2026年など）を自動取得してプロンプトに反映
+            current_year = datetime.now().year
+            
+            prompt = f"""
             添付されたPDFファイルをすべて確認し、文章の「誤字脱字」および「表記ゆれ」の検出に特化した厳密な校正を行ってください。
             所要時間の短縮よりも厳密さを重視してください。
 
@@ -186,18 +245,22 @@ if uploaded_file is not None:
             1. 誤字・脱字（漢字の変換ミス、文字の抜け、重複した助詞など）
             2. 送り仮名の誤り
             3. 表記ゆれ（カタカナ語の長音有無、漢字とひらがなの混在、半角・全角の混在、固有名詞の不統一）
-            4. 日時と曜日の整合性（令和・西暦の表記がなく前後からも判断できない場合は現在の年を基準にする。その場合は結果に「20xx年〇月〇日の場合、〇曜日が正しい」と表記）
+            4. 日時と曜日の整合性（令和・西暦の表記がなく前後からも判断できない場合は現在の年である{current_year}年を基準にする。その場合は理由欄に「{current_year}年〇月〇日の場合、〇曜日が正しい」と表記）
 
-            【出力フォーマット・強調ルール】
-            修正が必要な箇所のみ、以下の形式で出力してください。
+            【出力フォーマット・HTML構造ルール】
+            修正が必要な箇所ごとに、**必ず以下のHTMLブロック構造そのまま**で出力してください。余計なマークダウン記号（```html など）は絶対に出力しないでください。
             その際、元の文の間違っている文字は必ず <del class="diff-del">該当文字</del> で囲み、
             修正案の直した文字は必ず <u class="diff-add">修正文字</u> で囲んでください。
 
-            <div class="issue-header">📍 指摘箇所 [ページ数]</div>
-            - 種別：（誤字 / 脱字 / 送り仮名 / 表記ゆれ のいずれか）
-            - 元の文：「ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む」
-            - 修正案：「ここに修正文を記載し、直した部分だけ <u class="diff-add">正字</u> で囲む」
-            - 理由：（どの文字が誤っているか、または何ページ目の表記と統一すべきか）
+            <div class="issue-card">
+              <div class="issue-header">📍 指摘箇所 [ページ数]</div>
+              <div class="box-before"><span class="label-before">元の文</span>ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む</div>
+              <div class="box-after"><span class="label-after">修正案</span>ここに修正文を記載し、直した部分だけ <u class="diff-add">正字</u> で囲む</div>
+              <div class="issue-meta">
+                <strong>・種別：</strong>（誤字 / 脱字 / 送り仮名 / 表記ゆれ / 日付・曜日不整合 のいずれか）<br>
+                <strong>・理由：</strong>（どの文字が誤っているか、または何ページ目の表記と統一すべきか）
+              </div>
+            </div>
             """
             
             response_stream = client.models.generate_content_stream(
@@ -217,38 +280,9 @@ if uploaded_file is not None:
             for chunk in response_stream:
                 if chunk.text:
                     full_response += chunk.text
-                    result_placeholder.markdown(full_response + "▌", unsafe_allow_html=True)
+                    # AIが万が一 ```html を出力した場合に備えてリアルタイムに除去
+                    clean_stream = full_response.replace("```html", "").replace("```", "")
+                    result_placeholder.markdown(clean_stream + "▌", unsafe_allow_html=True)
             
-            result_placeholder.markdown(full_response, unsafe_allow_html=True)
-            status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-            
-            # 1. 画面下部に大きく目立つ完了バナーを表示
-            st.markdown(
-                '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
-                unsafe_allow_html=True
-            )
-            
-            # 2. 校正結果のPDFファイルを生成してダウンロードボタンを設置
-            pdf_bytes = create_result_pdf(full_response, uploaded_file.name)
-            base_name = os.path.splitext(uploaded_file.name)[0]
-            
-            st.download_button(
-                label="📥 校正結果をPDFファイルでダウンロードする",
-                data=pdf_bytes,
-                file_name=f"校正結果_{base_name}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
-        except Exception as e:
-            status.update(label="❌ 処理が中断されました", state="error", expanded=True)
-            st.error(f"【エラー詳細】\n\n{e}")
-            
-        finally:
-            if pdf_file:
-                try:
-                    client.files.delete(name=pdf_file.name)
-                except Exception:
-                    pass
-            if tmp_file_path and os.path.exists(tmp_file_path):
-                os.unlink(tmp_file_path)
+            final_clean_response = full_response.replace("```html", "").replace("```", "")
+            result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
