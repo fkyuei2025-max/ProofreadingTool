@@ -243,7 +243,7 @@ if uploaded_file is not None:
             修正案の直した文字は必ず <u class="diff-add">修正文字</u> で囲んでください。
 
             <div class="issue-card">
-              <div class="issue-header">📍 指摘箇所 [ページ数]</div>
+              <div class="issue-header">■ 指摘箇所 [ページ数]</div>
               <div class="box-before"><span class="label-before">元の文</span>ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む</div>
               <div class="box-after"><span class="label-after">修正案</span>ここに修正文を記載し、直した部分だけ <u class="diff-add">正字</u> で囲む</div>
               <div class="issue-meta">
