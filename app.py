@@ -286,3 +286,30 @@ if uploaded_file is not None:
             
             final_clean_response = full_response.replace("```html", "").replace("```", "")
             result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
+            status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
+# 1. 画面下部に大きく目立つ完了バナーを表示
+st.markdown(
+'🎉 すべての校正が完了しました！',
+unsafe_allow_html=True
+)
+# 2. 校正結果のPDFファイルを生成してダウンロードボタンを設置
+pdf_bytes = create_result_pdf(final_clean_response, uploaded_file.name)
+base_name = os.path.splitext(uploaded_file.name)[0]
+st.download_button(
+label="📥 校正結果をPDFファイルでダウンロードする",
+data=pdf_bytes,
+file_name=f"校正結果_{base_name}.pdf",
+mime="application/pdf",
+use_container_width=True
+)
+except Exception as e:
+status.update(label="❌ 処理が中断されました", state="error", expanded=True)
+st.error(f"【エラー詳細】\n\n{e}")
+finally:
+if pdf_file:
+try:
+client.files.delete(name=pdf_file.name)
+except Exception:
+pass
+if tmp_file_path and os.path.exists(tmp_file_path):
+os.unlink(tmp_file_path)
