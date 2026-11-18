@@ -1,10 +1,9 @@
 import streamlit as st
 from google import genai
 from google.genai import types
-from fpdf import FPDF
+from weasyprint import HTML
 import tempfile
 import os
-import re
 from datetime import datetime
 
 # ブラウザのタブ設定
@@ -33,33 +32,131 @@ def check_password():
 check_password()
 # ---------------------------------
 
-# 日本語PDF生成用の関数
-def create_result_pdf(result_text: str, original_filename: str) -> bytes:
-    font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-    if not os.path.exists(font_path):
-        font_path = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+# 画面のデザイン（CSS）を共通変数として定義（画面表示とPDF出力の両方で同じ見た目にするため）
+COMMON_CSS = """
+    body {
+        font-family: "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+        color: #1E1E1E;
+        font-size: 10.5pt;
+    }
+    .report-title {
+        font-size: 16pt;
+        font-weight: bold;
+        border-bottom: 2px solid #E53935;
+        padding-bottom: 6px;
+        margin-bottom: 16px;
+    }
+    .issue-card {
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        margin-top: 16px;
+        margin-bottom: 16px;
+        background-color: #FFFFFF;
+        page-break-inside: avoid; /* PDF印刷時にカードの途中で改ページされるのを防ぐ */
+        overflow: hidden;
+    }
+    .issue-header {
+        font-size: 1.05em;
+        font-weight: bold;
+        color: #1E1E1E;
+        background-color: #F1F3F5;
+        border-left: 5px solid #E53935;
+        padding: 7px 12px;
+        border-bottom: 1px solid #E0E0E0;
+    }
+    .box-before {
+        background-color: #FFF8F8;
+        padding: 9px 12px;
+        border-bottom: 1px dashed #FFCDD2;
+        line-height: 1.6;
+    }
+    .box-after {
+        background-color: #F4FBF7;
+        padding: 9px 12px;
+        border-bottom: 1px solid #E0E0E0;
+        line-height: 1.6;
+    }
+    .label-before {
+        display: inline-block;
+        background-color: #E53935;
+        color: white;
+        font-size: 0.78em;
+        font-weight: bold;
+        padding: 2px 7px;
+        border-radius: 4px;
+        margin-right: 8px;
+    }
+    .label-after {
+        display: inline-block;
+        background-color: #2E7D32;
+        color: white;
+        font-size: 0.78em;
+        font-weight: bold;
+        padding: 2px 7px;
+        border-radius: 4px;
+        margin-right: 8px;
+    }
+    del.diff-del {
+        color: #D32F2F;
+        background-color: #FFCDD2;
+        text-decoration: line-through;
+        font-weight: bold;
+        padding: 1px 4px;
+        border-radius: 3px;
+    }
+    u.diff-add {
+        color: #1B5E20;
+        background-color: #C8E6C9;
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        font-weight: bold;
+        padding: 1px 4px;
+        border-radius: 3px;
+    }
+    .issue-meta {
+        background-color: #FAFAFA;
+        padding: 9px 12px;
+        font-size: 0.9em;
+        color: #424242;
+        line-height: 1.5;
+    }
+    .complete-banner {
+        background: linear-gradient(135deg, #2E7D32 0%, #43A047 100%);
+        color: white;
+        padding: 18px 24px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.25em;
+        font-weight: bold;
+        margin-top: 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 10px rgba(46, 125, 50, 0.25);
+        letter-spacing: 0.05em;
+    }
+"""
 
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.add_font("JPFont", style="", fname=font_path)
-    pdf.set_font("JPFont", size=11)
-
-    pdf.set_font_size(15)
-    pdf.cell(0, 10, txt=f"【AI校正レポート】 {original_filename}", ln=True)
-    pdf.ln(5)
-
-    clean_text = re.sub(r'<div class="issue-header">(.*?)</div>', r'\n========================================\n\1\n========================================', result_text)
-    clean_text = re.sub(r'<span class="label-before">.*?</span>', '【元の文】 ', clean_text)
-    clean_text = re.sub(r'<span class="label-after">.*?</span>', '【修正案】 ', clean_text)
-    clean_text = re.sub(r'<del class="diff-del">(.*?)</del>', r'《誤:\1》', clean_text)
-    clean_text = re.sub(r'<u class="diff-add">(.*?)</u>', r'《正:\1》', clean_text)
-    clean_text = re.sub(r'<div class="issue-meta">', '\n[補足情報]\n', clean_text)
-    clean_text = re.sub(r'<br\s*/?>', '\n', clean_text)
-    clean_text = re.sub(r'<[^>]+>', '', clean_text)
-
-    pdf.set_font_size(10)
-    pdf.multi_cell(0, 7, txt=clean_text)
-    return bytes(pdf.output())
+# 画面デザインのそのままを維持してPDFを生成する関数
+def create_result_pdf(result_html: str, original_filename: str) -> bytes:
+    full_html = f"""
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @page {{
+                size: A4;
+                margin: 15mm;
+            }}
+            {COMMON_CSS}
+        </style>
+    </head>
+    <body>
+        <div class="report-title">【AI校正レポート】 {original_filename}</div>
+        {result_html}
+    </body>
+    </html>
+    """
+    return HTML(string=full_html).write_pdf()
 
 # タイトルと赤い「PDF」SVGアイコンの表示
 st.markdown(
@@ -93,103 +190,8 @@ st.markdown(
 )
 # ---------------------------------
 
-# 上下比較カード＆ハイライト用のデザイン（CSS）
-st.markdown(
-    """
-    <style>
-    .issue-card {
-        border: 1px solid #E0E0E0;
-        border-radius: 8px;
-        margin-top: 22px;
-        margin-bottom: 18px;
-        background-color: #FFFFFF;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.04);
-        overflow: hidden;
-    }
-    .issue-header {
-        font-size: 1.1em;
-        font-weight: bold;
-        color: #1E1E1E;
-        background-color: #F1F3F5;
-        border-left: 5px solid #E53935;
-        padding: 8px 14px;
-        border-bottom: 1px solid #E0E0E0;
-    }
-    .box-before {
-        background-color: #FFF8F8;
-        padding: 10px 14px;
-        border-bottom: 1px dashed #FFCDD2;
-        line-height: 1.6;
-    }
-    .box-after {
-        background-color: #F4FBF7;
-        padding: 10px 14px;
-        border-bottom: 1px solid #E0E0E0;
-        line-height: 1.6;
-    }
-    .label-before {
-        display: inline-block;
-        background-color: #E53935;
-        color: white;
-        font-size: 0.78em;
-        font-weight: bold;
-        padding: 2px 7px;
-        border-radius: 4px;
-        margin-right: 8px;
-        vertical-align: middle;
-    }
-    .label-after {
-        display: inline-block;
-        background-color: #2E7D32;
-        color: white;
-        font-size: 0.78em;
-        font-weight: bold;
-        padding: 2px 7px;
-        border-radius: 4px;
-        margin-right: 8px;
-        vertical-align: middle;
-    }
-    del.diff-del {
-        color: #D32F2F;
-        background-color: #FFCDD2;
-        text-decoration: line-through;
-        font-weight: bold;
-        padding: 1px 4px;
-        border-radius: 3px;
-    }
-    u.diff-add {
-        color: #1B5E20;
-        background-color: #C8E6C9;
-        text-decoration: underline;
-        text-decoration-thickness: 2px;
-        font-weight: bold;
-        padding: 1px 4px;
-        border-radius: 3px;
-    }
-    .issue-meta {
-        background-color: #FAFAFA;
-        padding: 10px 14px;
-        font-size: 0.9em;
-        color: #424242;
-        line-height: 1.5;
-    }
-    .complete-banner {
-        background: linear-gradient(135deg, #2E7D32 0%, #43A047 100%);
-        color: white;
-        padding: 18px 24px;
-        border-radius: 8px;
-        text-align: center;
-        font-size: 1.25em;
-        font-weight: bold;
-        margin-top: 30px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 10px rgba(46, 125, 50, 0.25);
-        letter-spacing: 0.05em;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# 共通CSSを画面に適用
+st.markdown(f"<style>{COMMON_CSS}</style>", unsafe_allow_html=True)
 
 client = genai.Client(
     api_key=st.secrets["GEMINI_API_KEY"],
