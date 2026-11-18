@@ -312,8 +312,6 @@ if uploaded_file is not None:
                 <strong>・確認結果：</strong>（例：{current_year}年〇月〇日は〇曜日で一致しており問題ありません）
               </div>
             </div>
-
-            """
             
             """
             
