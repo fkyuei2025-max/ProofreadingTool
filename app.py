@@ -4,9 +4,7 @@ from google.genai import types
 from weasyprint import HTML
 import tempfile
 import os
-import re
 from datetime import datetime
-
 
 # ブラウザのタブ設定
 st.set_page_config(
@@ -34,7 +32,7 @@ def check_password():
 check_password()
 # ---------------------------------
 
-# 画面のデザイン（CSS）を共通変数として定義（画面表示とPDF出力の両方で同じ見た目にするため）
+# 画面のデザイン（CSS）を共通変数として定義
 COMMON_CSS = """
     body {
         font-family: "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
@@ -48,13 +46,14 @@ COMMON_CSS = """
         padding-bottom: 6px;
         margin-bottom: 16px;
     }
+    /* 【異常あり】指摘箇所のカード枠 */
     .issue-card {
         border: 1px solid #E0E0E0;
         border-radius: 8px;
         margin-top: 16px;
         margin-bottom: 16px;
         background-color: #FFFFFF;
-        page-break-inside: avoid; /* PDF印刷時にカードの途中で改ページされるのを防ぐ */
+        page-break-inside: avoid;
         overflow: hidden;
     }
     .issue-header {
@@ -66,12 +65,50 @@ COMMON_CSS = """
         padding: 7px 12px;
         border-bottom: 1px solid #E0E0E0;
     }
+    /* 【問題なし】確認済みカードの枠（控えめな青グレー系） */
+    .ok-card {
+        border: 1px solid #CFD8DC;
+        border-radius: 8px;
+        margin-top: 16px;
+        margin-bottom: 16px;
+        background-color: #F8FAFC;
+        page-break-inside: avoid;
+        overflow: hidden;
+        opacity: 0.88;
+    }
+    .ok-header {
+        font-size: 1.0em;
+        font-weight: bold;
+        color: #455A64;
+        background-color: #ECEFF1;
+        border-left: 5px solid #78909C;
+        padding: 7px 12px;
+        border-bottom: 1px solid #CFD8DC;
+    }
+    .ok-body {
+        padding: 9px 12px;
+        color: #37474F;
+        line-height: 1.6;
+        border-bottom: 1px dashed #CFD8DC;
+    }
+    .label-ok {
+        display: inline-block;
+        background-color: #607D8B;
+        color: white;
+        font-size: 0.78em;
+        font-weight: bold;
+        padding: 2px 7px;
+        border-radius: 4px;
+        margin-right: 8px;
+    }
+    /* 上段：元の文のボックス */
     .box-before {
         background-color: #FFF8F8;
         padding: 9px 12px;
         border-bottom: 1px dashed #FFCDD2;
         line-height: 1.6;
     }
+    /* 下段：修正案のボックス */
     .box-after {
         background-color: #F4FBF7;
         padding: 9px 12px;
@@ -232,9 +269,8 @@ if uploaded_file is not None:
             添付されたPDFファイルをすべて確認し、文章の「誤字脱字」および「表記ゆれ」の検出に特化した厳密な校正を行ってください。
 
             【絶対遵守の禁止事項】
-            - **思考プロセス、確認メモ、カレンダーの計算過程、前置き、挨拶などの独り言は1文字も出力しないでください。**
-            - 出力は必ず `<div class="issue-card">` から始まるHTMLブロックのみ（または指摘ゼロの場合のメッセージのみ）にしてください。
-            - **元の文と修正案が同じになる場合（誤りがない場合）は、絶対に出力しないでください。**
+            - **思考プロセス、確認メモ、前置き、挨拶などの独り言は1文字も出力しないでください。**
+            - 出力は必ず `<div class="issue-card">` または `<div class="ok-card">` から始まるHTMLブロックのみにしてください。
 
             【校正の基本ルール】
             - 文章の言い回しや表現の推敲、リライト提案は不要です。
@@ -250,11 +286,13 @@ if uploaded_file is not None:
             1. 誤字・脱字（漢字の変換ミス、文字の抜け、重複した助詞など）
             2. 送り仮名の誤り
             3. 表記ゆれ（カタカナ語の長音有無、漢字とひらがなの混在、半角・全角の混在、固有名詞の不統一）
-            4. 日時と曜日の整合性（※日付と曜日が一致している場合は無視し、**曜日が間違っている場合のみ**指摘してください。年の記載がない場合は{current_year}年を基準にし、間違いがある場合のみ理由欄に「{current_year}年〇月〇日は〇曜日が正しいため」と記載してください）
+            4. 日時と曜日の整合性（令和・西暦の表記がなく前後からも判断できない場合は{current_year}年を基準にする）
 
             【出力フォーマット・HTML構造ルール】
-            修正が必要な箇所ごとに、**必ず以下のHTMLブロック構造そのまま**で出力してください。余計なマークダウン記号（```html など）は絶対に出力しないでください。
+            余計なマークダウン記号（```html など）は絶対に出力しないでください。
 
+            ■ パターンA：【修正が必要な箇所（誤字・脱字・表記ゆれ・曜日間違い）】
+            以下の赤いカード形式（issue-card）で出力してください。
             <div class="issue-card">
               <div class="issue-header">■ 指摘箇所 [ノンブル: 〇 / PDF: 〇ページ目 / 〇行目]</div>
               <div class="box-before"><span class="label-before">元の文</span>ここに元の文を記載し、誤り部分だけ <del class="diff-del">誤字</del> で囲む</div>
@@ -264,6 +302,19 @@ if uploaded_file is not None:
                 <strong>・理由：</strong>（どの文字が誤っているか、またはどのノンブル・ページの表記と統一すべきか）
               </div>
             </div>
+
+            ■ パターンB：【確認した結果、問題がなかった箇所（主に日付と曜日が一致している確認結果）】
+            原則出力不要ですが、もし確認結果を出力する場合は、必ず以下の青グレーのカード形式（ok-card）を使い、修正が必要なカードと明確に区別してください。
+            <div class="ok-card">
+              <div class="ok-header">■ 確認済み（問題なし） [ノンブル: 〇 / PDF: 〇ページ目 / 〇行目]</div>
+              <div class="ok-body"><span class="label-ok">対象文</span>ここに確認した元の文をそのまま記載</div>
+              <div class="issue-meta">
+                <strong>・確認結果：</strong>（例：{current_year}年〇月〇日は〇曜日で一致しており問題ありません）
+              </div>
+            </div>
+
+            """
+            
             """
             
             response_stream = client.models.generate_content_stream(
@@ -284,43 +335,26 @@ if uploaded_file is not None:
                 if chunk.text:
                     full_response += chunk.text
                     clean_stream = full_response.replace("```html", "").replace("```", "")
-                    if '<div class="issue-card">' in clean_stream:
-                        clean_stream = clean_stream[clean_stream.find('<div class="issue-card">'):]
+                    
+                    # 最初のHTMLカードより前の独り言だけをカット
+                    first_issue = clean_stream.find('<div class="issue-card">')
+                    first_ok = clean_stream.find('<div class="ok-card">')
+                    indices = [i for i in [first_issue, first_ok] if i != -1]
+                    if indices:
+                        clean_stream = clean_stream[min(indices):]
+                        
                     result_placeholder.markdown(clean_stream + "▌", unsafe_allow_html=True)
             
-            # --- ここから不要カード自動削除フィルター ---
             final_clean_response = full_response.replace("```html", "").replace("```", "")
-            
-            # HTML内の <div class="issue-card">...</div> を1枚ずつ抽出して検査
-            cards = re.findall(r'<div class="issue-card">.*?</div>\s*</div>', final_clean_response, flags=re.DOTALL)
-            valid_cards = []
-            
-            for card in cards:
-                # 理由欄などに「一致している」「指摘不要」「問題ない」が含まれる誤爆カードを除外
-                if any(word in card for word in ["一致している", "一致しています", "指摘不要", "問題ない", "問題ありません", "正しいため"]):
-                    continue
+            first_issue = final_clean_response.find('<div class="issue-card">')
+            first_ok = final_clean_response.find('<div class="ok-card">')
+            indices = [i for i in [first_issue, first_ok] if i != -1]
+            if indices:
+                final_clean_response = final_clean_response[min(indices):]
                 
-                # 元の文と修正案のテキスト（タグ除去後）が全く同じカードを除外
-                before_match = re.search(r'<div class="box-before">.*?</span>(.*?)</div>', card, flags=re.DOTALL)
-                after_match = re.search(r'<div class="box-after">.*?</span>(.*?)</div>', card, flags=re.DOTALL)
-                if before_match and after_match:
-                    before_text = re.sub(r'<[^>]+>', '', before_match.group(1)).strip()
-                    after_text = re.sub(r'<[^>]+>', '', after_match.group(1)).strip()
-                    if before_text == after_text:
-                        continue
-                        
-                valid_cards.append(card)
-            
-            # 有効な指摘カードが1枚でも残っていればそれだけを並べる。0枚なら「見つかりませんでした」にする
-            if valid_cards:
-                final_clean_response = "\n".join(valid_cards)
-            else:
-                final_clean_response = "誤字脱字・表記ゆれは見つかりませんでした。"
-            # ------------------------------------------
-            
             result_placeholder.markdown(final_clean_response, unsafe_allow_html=True)
             status.update(label="✅ 解析が完了しました", state="complete", expanded=False)
-           
+            
             st.markdown(
                 '<div class="complete-banner">🎉 すべての校正が完了しました！</div>',
                 unsafe_allow_html=True
