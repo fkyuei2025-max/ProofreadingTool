@@ -284,20 +284,22 @@ if uploaded_file is not None:
             base_name = os.path.splitext(uploaded_file.name)[0]
             
             st.download_button(
-            label="📥 校正結果をPDFファイルでダウンロードする",
-            data=pdf_bytes,
-            file_name=f"校正結果_{base_name}.pdf",
-            mime="application/pdf",
-            use_container_width=True
+                label="📥 校正結果をPDFファイルでダウンロードする",
+                data=pdf_bytes,
+                file_name=f"校正結果_{base_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True
             )
-except Exception as e:
-status.update(label="❌ 処理が中断されました", state="error", expanded=True)
-st.error(f"【エラー詳細】\n\n{e}")
-finally:
-if pdf_file:
-try:
-client.files.delete(name=pdf_file.name)
-except Exception:
-pass
-if tmp_file_path and os.path.exists(tmp_file_path):
-os.unlink(tmp_file_path)
+            
+        except Exception as e:
+            status.update(label="❌ 処理が中断されました", state="error", expanded=True)
+            st.error(f"【エラー詳細】\n\n{e}")
+            
+        finally:
+            if pdf_file:
+                try:
+                    client.files.delete(name=pdf_file.name)
+                except Exception:
+                    pass
+            if tmp_file_path and os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
